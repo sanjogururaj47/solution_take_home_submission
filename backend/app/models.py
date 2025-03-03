@@ -6,6 +6,30 @@ from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.usage import Usage, UsageLimits
 
+
+# Chat Models
+class ChatMessage(BaseModel):
+    role: str
+    content: Optional[str] = None
+    tool_calls: Optional[List[Dict[str, Any]]] = None
+    tool_call_id: Optional[str] = None
+
+class ToolFunction(BaseModel):
+    name: str
+    description: Optional[str] = None
+    parameters: Optional[Dict[str, Any]] = None
+
+class Tool(BaseModel):
+    type: str = "function"
+    function: ToolFunction
+
+class ChatRequest(BaseModel):
+    messages: List[ChatMessage]
+    model: str = "gpt-4o-mini"
+    temperature: float = 0.7
+    tools: Optional[List[Dict[str, Any]]] = None
+    tool_choice: Optional[Union[str, Dict[str, Any]]] = None
+
 # Flight Search Models
 class FlightSearchParams(BaseModel):
     origin: str = Field(..., description="Origin airport IATA code (e.g., 'LAX')")
@@ -44,7 +68,7 @@ class SearchFlightAgent(Agent[FlightSearchParams, FlightSearchResult]):
         self.name = "search_flights"  # Ensure name is set in constructor
         self.description = "Search for available flights between airports using IATA codes"
     
-    model: str = "gpt-3.5-turbo"
+    model: str = "gpt-4o-mini"
     temperature: float = 0.7
     
     async def run(self, params: FlightSearchParams) -> FlightSearchResult:
@@ -54,29 +78,6 @@ class SearchFlightAgent(Agent[FlightSearchParams, FlightSearchResult]):
             destination=params.destination,
             date=params.departure_date
         )
-
-# Chat Models
-class ChatMessage(BaseModel):
-    role: str
-    content: Optional[str] = None
-    tool_calls: Optional[List[Dict[str, Any]]] = None
-    tool_call_id: Optional[str] = None
-
-class ToolFunction(BaseModel):
-    name: str
-    description: Optional[str] = None
-    parameters: Optional[Dict[str, Any]] = None
-
-class Tool(BaseModel):
-    type: str = "function"
-    function: ToolFunction
-
-class ChatRequest(BaseModel):
-    messages: List[ChatMessage]
-    model: str = "gpt-3.5-turbo"
-    temperature: float = 0.7
-    tools: Optional[List[Dict[str, Any]]] = None
-    tool_choice: Optional[Union[str, Dict[str, Any]]] = None
 
 # Traveler Models
 class Document(BaseModel):
@@ -100,12 +101,16 @@ class Contact(BaseModel):
     emailAddress: str
     phones: List[Phone]
 
-# Add these new models for payment information
+# Payment Models
 class CardInfo(BaseModel):
     vendorCode: str = "VI"  # VI for Visa, MC for Mastercard, etc.
     cardNumber: str = "4111111111111111"  # Default test card number
     expiryDate: str = "2025-12"  # YYYY-MM format
-    securityCode: str = "123"
+    securityCode: str = "123"  # Only used for initial card info
+    holderName: str = "John Smith"  # Added from PaymentCardInfo
+
+class PaymentCard(BaseModel):
+    paymentCardInfo: CardInfo
 
 class BillingAddress(BaseModel):
     lines: List[str] = ["123 Main St"]
@@ -116,7 +121,7 @@ class BillingAddress(BaseModel):
 
 class PaymentInfo(BaseModel):
     method: str = "creditCard"
-    card: CardInfo = CardInfo()
+    card: CardInfo = CardInfo()  # Using the consolidated CardInfo model
     billing_address: BillingAddress = BillingAddress()
 
 # Update the Traveler model to include payment information
@@ -151,13 +156,21 @@ class BookFlightParams(BaseModel):
     departure_date: str
     traveler: Traveler
 
+class FlightDetails(BaseModel):
+    segments: List[Dict[str, str]]  # List of segment dictionaries
+    total_segments: int
+    origin: str
+    destination: str
+    departure: str
+    arrival: str
+
 class BookingResult(BaseModel):
     booking_reference: Optional[str] = None
-    status: str = "confirmed"
+    status: str
     error: Optional[str] = None
     price: Optional[str] = None
-    flight_details: Optional[Dict[str, str]] = None
-    traveler_info: Optional[Traveler] = None  # Added traveler info
+    flight_details: Optional[FlightDetails] = None
+    traveler_info: Optional[Traveler] = None
 
 # Add the BookFlightAgent
 class BookFlightAgent(Agent[BookFlightParams, BookingResult]):
@@ -168,7 +181,7 @@ class BookFlightAgent(Agent[BookFlightParams, BookingResult]):
         self.name = "book_flight"
         self.description = "Book a flight for a traveler"
     
-    model: str = "gpt-3.5-turbo"
+    model: str = "gpt-4o-mini"
     temperature: float = 0.7
     
     async def run(self, params: BookFlightParams) -> BookingResult:
@@ -214,18 +227,12 @@ class RoomAssociation(BaseModel):
     guestReferences: List[GuestReference]
     hotelOfferId: str
 
-class PaymentCardInfo(BaseModel):
-    vendorCode: str = "VI"
-    cardNumber: str = "4151289722471370"
-    expiryDate: str = "2026-08"
-    holderName: str = "BOB SMITH"
-
 class PaymentCard(BaseModel):
-    paymentCardInfo: PaymentCardInfo
+    paymentCardInfo: CardInfo
 
 class Payment(BaseModel):
     method: str = "CREDIT_CARD"
-    paymentCard: PaymentCard
+    paymentCard: PaymentCard = PaymentCard(paymentCardInfo=CardInfo())
 
 class TravelAgent(BaseModel):
     contact: dict = {"email": "bob.smith@email.com"}
@@ -270,7 +277,7 @@ class BookHotelAgent(Agent[HotelBookingParams, HotelBookingResult]):
         self.name = "book_hotel"
         self.description = "Book a hotel room for travelers"
     
-    model: str = "gpt-3.5-turbo"
+    model: str = "gpt-4o-mini"
     temperature: float = 0.7
     
     async def run(self, params: HotelBookingParams) -> HotelBookingResult:
@@ -321,7 +328,7 @@ class TransferSearchAgent(Agent[TransferSearchParams, TransferSearchResult]):
         self.name = "search_transfers"
         self.description = "Search for available transfers from airport to hotel"
     
-    model: str = "gpt-3.5-turbo"
+    model: str = "gpt-4o-mini"
     temperature: float = 0.7
     
     async def run(self, params: TransferSearchParams) -> TransferSearchResult:
@@ -354,7 +361,7 @@ class BookTransferAgent(Agent[TransferBookingParams, TransferBookingResult]):
         self.name = "book_transfer"
         self.description = "Book an airport transfer service"
     
-    model: str = "gpt-3.5-turbo"
+    model: str = "gpt-4o-mini"
     temperature: float = 0.7
     
     async def run(self, params: TransferBookingParams) -> TransferBookingResult:
@@ -394,7 +401,7 @@ class TripDetailsAgent(Agent[GetTripDetailsParams, TripDetailsResponse]):
         self.name = "get_trip_details"
         self.description = "Get details of booked flights and hotels"
     
-    model: str = "gpt-3.5-turbo"
+    model: str = "gpt-4o-mini"
     temperature: float = 0.7
     
     async def run(self, params: GetTripDetailsParams) -> TripDetailsResponse:
@@ -410,7 +417,7 @@ class SearchHotelAgent(Agent[SearchHotelParams, HotelSearchResult]):
         self.name = "search_hotels"
         self.description = "Search for available hotels in a city"
     
-    model: str = "gpt-3.5-turbo"
+    model: str = "gpt-4o-mini"
     temperature: float = 0.7
     
     async def run(self, params: SearchHotelParams) -> HotelSearchResult:

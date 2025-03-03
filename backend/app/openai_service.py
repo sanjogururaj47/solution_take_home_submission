@@ -30,13 +30,10 @@ async def generate_chat_response(chat_request: ChatRequest):
         # Add tools if they exist
         if chat_request.tools:
             params["tools"] = chat_request.tools
-            # logger.info(f"Tools being sent to OpenAI: {json.dumps(chat_request.tools, indent=2)}")
         
         # Add tool_choice if it exists
         if chat_request.tool_choice:
             params["tool_choice"] = chat_request.tool_choice
-        
-        # logger.info(f"Full params being sent to OpenAI: {json.dumps(params, indent=2)}")
         
         # Make the API call
         response = client.chat.completions.create(**params)

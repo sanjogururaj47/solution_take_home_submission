@@ -1,9 +1,14 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
+# Standard library imports
 import json
 import logging
-from dotenv import load_dotenv
 from datetime import date
+
+# Third-party imports
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+
+# Local application imports
 from .models import (
     ChatRequest, 
     ChatMessage, 
@@ -45,14 +50,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Get today's date for validation
-TODAY = date.today().strftime("%Y-%m-%d")
-
-print(f"\n\n\n\n\n\nTODAY: {TODAY}\n\n\n\n\n")
+# Get today's year for validation
+CURRENT_YEAR = date.today().year  # Extract the current year
 
 # Define global system prompt
-SYSTEM_PROMPT = f"""Today's date is {TODAY}. You are an AI travel agent for Brainbase Airlines. Start by warmly greeting the user and asking how you can help them with their travel plans today.
+SYSTEM_PROMPT = f"""The year is {CURRENT_YEAR}. You are an AI travel agent for Brainbase Airlines. Start by warmly greeting the user and asking how you can help them with their travel plans today.
 You help with 3 services: flights, hotels, and transfers. If the user asks for all 3, handle them one at a time, in this order: flights, hotels, then transfers.
+
+IMPORTANT: When a user requests multiple services at once, DO NOT CALL ANY TOOLS immediately. 
+Instead, first respond with an acknowledgment and explain the step-by-step process.
+
+Once we've found the right flight, we'll look at hotels, and then arrange a transfer."
+
 Everytime, before booking, present the user with the default name and traveler information you have, and then proceed as instructed by the user.
 
 CRITICAL FLIGHT BOOKING WORKFLOW:
@@ -61,13 +70,14 @@ When a user wants to book a flight, do NOT call the search_flights tool UNLESS y
    - Then ask for their destination airport (Airport code or city, e.g., 'JFK' or New York)
    - Then ask if they'd like to book a one-way or round trip flight
    - If they want a round trip, ask for the return date
+   - If you get an error saying date/time is in the past, then ask for the year from user.
    - DO NOT CALL THE search_flights tool before asking if one way or round trip, and make SURE to collect the return date if it's a round trip
-   - NEVER call the search_flights tool before this date: {TODAY}
+   - NEVER call the search_flights tool before this year: {CURRENT_YEAR}
    - Once the flight is booked, prompt the user and ask if they'd like to book a hotel.
 
 
 CRITICAL HOTEL BOOKING WORKFLOW:
-1. When user searches for hotels:
+1. When user searches for hotels, do NOT call the search_hotels tool UNLESS you have collected ALL of these details:
    - FIRST ask for check-in and check-out dates. ALWAYS collect these.
    - Call search_hotels with the city code
    - Present each hotel with:
@@ -102,9 +112,9 @@ You can use tools when appropriate to fulfill user requests.
 HANDLING MULTIPLE SERVICES:
 When a user requests multiple services (e.g., flight + hotel or flight + hotel + transfer):
 1. Handle one service at a time in a logical order:
-   - First follow the workflow for booking flights (since hotel dates depend on flight schedule)
-   - Then follow the workflow for booking hotels (using flight arrival/departure dates)
-   - Finally follow the workflow for booking transfers if needed
+   - First follow the "CRITICAL FLIGHT BOOKING WORKFLOW:" for booking flights (since hotel dates depend on flight schedule)
+   - Then follow the "CRITICAL HOTEL BOOKING WORKFLOW:" for booking hotels (using flight arrival/departure dates)
+   - Finally follow the "CRITICAL TRANSFER BOOKING WORKFLOW:" for booking transfers if needed
 
 2. Be clear about the process:
    - Tell the user you'll handle each request in sequence
@@ -605,6 +615,8 @@ async def websocket_endpoint(websocket: WebSocket):
                                 
                                 # Convert Pydantic model to dict for JSON serialization
                                 function_response_dict = function_response.model_dump()
+
+                                print(f"\n\n\n\n\nFunction response: {function_response_dict}\n\n\n\n\n")
                                                                 
                                 # Check for errors in the function response
                                 if hasattr(function_response, 'error') and function_response.error:

@@ -32,9 +32,15 @@ from .models import (
     RoomDetails
 )
 from datetime import datetime
-from typing import Dict, Union
+from typing import Dict, List, Union, Optional
 
 logger = logging.getLogger(__name__)
+
+# Move hardcoded values to constants at the top
+AMADEUS_TEST_BASE_URL = "https://test.api.amadeus.com"
+MAX_HOTELS_TO_FETCH = 5
+DEFAULT_HOTEL_RADIUS_KM = 10
+DEFAULT_CURRENCY = "USD"
 
 # Search and Book Flight
 async def search_flights(origin: str, destination: str, date: str) -> FlightSearchResult:
@@ -51,7 +57,7 @@ async def search_flights(origin: str, destination: str, date: str) -> FlightSear
                     'departureDate': date,
                     'adults': 1,
                     'currencyCode': 'USD',
-                    'max': 5
+                    'max': 6
                 }
             ) as response:
                 response_data = await response.json()
@@ -72,6 +78,10 @@ async def search_flights(origin: str, destination: str, date: str) -> FlightSear
                                 return FlightSearchResult(error=f"Invalid date format: {date}. Please provide the date in YYYY-MM-DD format.")
                         elif 'NO_FLIGHT_FOUND' in error_code:
                             return FlightSearchResult(error=f"No flights found from {origin} to {destination} on {date}. Try different dates or airports.")
+                    
+                    # Handle past date error
+                    if "date/time is in the past" in error_detail.lower():
+                        return FlightSearchResult(error="Please provide a date in the format: YYYY-MM-DD, and I will try the search again.")
                     
                     # Generic error fallback
                     return FlightSearchResult(error=error_detail or "Failed to search for flights. Please try again.")
@@ -121,7 +131,8 @@ async def search_flights(origin: str, destination: str, date: str) -> FlightSear
             
     except Exception as e:
         logger.error(f"Error searching flights: {str(e)}")
-        return FlightSearchResult(error="An unexpected error occurred. Please try again later.")
+        return FlightSearchResult(error="I encountered an issue while trying to search for your flight. This could be due to temporary availability issues. Please try searching for flights again, and I'll help you complete the booking. Also could be the access token issue, try refreshing it. Sorry for the inconvenience!"
+)
 
 async def book_flight(params: BookFlightParams) -> BookingResult:
     """
@@ -139,20 +150,37 @@ async def book_flight(params: BookFlightParams) -> BookingResult:
                     'destinationLocationCode': params.destination,
                     'departureDate': params.departure_date,
                     'adults': 1,
-                    'max': 1
+                    'max': 10  # Increased to make sure we get the specific flight
                 }
             )
             search_data = await search_response.json()
             
-            if not search_data.get('data'):
+            if 'errors' in search_data:
+                error_detail = search_data['errors'][0].get('detail', '')
+                if "schedule change detected" in error_detail.lower():
+                    return BookingResult(
+                        status="error",
+                        error="This flight's schedule has recently changed or has been booked out. Please search with a later date. I apologize for the inconvenience."
+                    )
                 return BookingResult(
                     status="error",
-                    error="No flights found matching the criteria"
+                    error=error_detail or "No flights found matching the criteria"
                 )
 
-            flight_offer = search_data['data'][0]
+            # Find the specific flight offer by ID
+            flight_offer = None
+            for offer in search_data.get('data', []):
+                if offer['id'] == params.flight_id:
+                    flight_offer = offer
+                    break
 
-            # Step 2: Price confirmation
+            if not flight_offer:
+                return BookingResult(
+                    status="error",
+                    error="Could not find the selected flight. Please search again."
+                )
+
+            # Step 2: Price confirmation with the complete flight offer
             pricing_response = await session.post(
                 'https://test.api.amadeus.com/v1/shopping/flight-offers/pricing',
                 headers={
@@ -162,7 +190,7 @@ async def book_flight(params: BookFlightParams) -> BookingResult:
                 json={
                     'data': {
                         'type': 'flight-offers-pricing',
-                        'flightOffers': [flight_offer]
+                        'flightOffers': [flight_offer]  # Send the complete offer
                     }
                 }
             )
@@ -198,20 +226,40 @@ async def book_flight(params: BookFlightParams) -> BookingResult:
             )
             booking_data = await booking_response.json()
 
+            # Handle errors in final booking step
             if 'errors' in booking_data:
+                error_detail = booking_data['errors'][0].get('detail', '')
+                
+                # Handle schedule change error
+                if "schedule change detected" in error_detail.lower():
+                    return BookingResult(
+                        status="error",
+                        error="This flight's schedule has recently changed or has been booked out. Please search with a later date. I apologize for the inconvenience."
+                    )
+                
                 return BookingResult(
                     status="error",
                     error=booking_data['errors'][0].get('detail', 'Booking failed')
                 )
 
             # Extract flight details from the confirmed booking
-            segments = booking_data['data']['flightOffers'][0]["itineraries"][0]["segments"][0]
+            segments = booking_data['data']['flightOffers'][0]["itineraries"][0]["segments"]
             flight_details = {
-                "flight_number": f"{segments['carrierCode']}{segments['number']}",
-                "departure": segments["departure"]["at"],
-                "arrival": segments["arrival"]["at"],
-                "origin": segments["departure"]["iataCode"],
-                "destination": segments["arrival"]["iataCode"],
+                "segments": [
+                    {
+                        "flight_number": f"{segment['carrierCode']}{segment['number']}",
+                        "departure": segment["departure"]["at"],
+                        "arrival": segment["arrival"]["at"],
+                        "origin": segment["departure"]["iataCode"],
+                        "destination": segment["arrival"]["iataCode"],
+                    }
+                    for segment in segments
+                ],
+                "total_segments": len(segments),
+                "origin": segments[0]["departure"]["iataCode"],  # First departure
+                "destination": segments[-1]["arrival"]["iataCode"],  # Last arrival
+                "departure": segments[0]["departure"]["at"],  # First departure time
+                "arrival": segments[-1]["arrival"]["at"],  # Last arrival time
             }
 
             result = BookingResult(
@@ -230,7 +278,7 @@ async def book_flight(params: BookFlightParams) -> BookingResult:
         logger.error(f"Error booking flight: {str(e)}")
         return BookingResult(
             status="error",
-            error="An unexpected error occurred while booking the flight"
+            error="I encountered an issue while trying to book your flight. This could be due to temporary availability issues. Please try searching for flights again, and I'll help you complete the booking. Also could be the access token issue, try refreshing it. Sorry for the inconvenience!"
         ) 
 
 # Search for Hotel
@@ -258,7 +306,6 @@ async def search_hotels(params: SearchHotelParams) -> HotelSearchResult:
                 params=search_params
             )
             hotels_data = await search_response.json()
-            print(f"\n\n\n\n\nHotel search response: {json.dumps(hotels_data, indent=2)}\n\n\n\n\n")
             
             if 'errors' in hotels_data:
                 return HotelSearchResult(
@@ -267,8 +314,6 @@ async def search_hotels(params: SearchHotelParams) -> HotelSearchResult:
 
             # Get hotel IDs from search results (limit to 5)
             hotel_ids = [hotel.get('hotelId') for hotel in hotels_data.get('data', [])[:5]]
-
-            print(f"\n\n\n\n\nHotel IDs: {hotel_ids}\n\n\n\n\n")
             
             if not hotel_ids:
                 return HotelSearchResult(
@@ -287,8 +332,6 @@ async def search_hotels(params: SearchHotelParams) -> HotelSearchResult:
                 }
             )
             offers_data = await offers_response.json()
-
-            print(f"\n\n\n\n\nOffers data: {json.dumps(offers_data, indent=2)}\n\n\n\n\n")
 
             # Process hotels with their offers
             hotels = []
@@ -349,12 +392,12 @@ async def search_hotels(params: SearchHotelParams) -> HotelSearchResult:
 
     except Exception as e:
         logger.error(f"Error searching hotels: {str(e)}")
-        return HotelSearchResult(error="An unexpected error occurred while searching for hotels")
+        return HotelSearchResult(error="I encountered an issue while trying to search for hotels. This could be due to temporary availability issues. Please try searching for hotels again, and I'll help you complete the booking. Also could be the access token issue, try refreshing it. Sorry for the inconvenience!"
+)
 
 async def book_hotel(params: HotelBookingParams) -> HotelBookingResult:
     """Book a hotel and return booking details."""
     try:
-        # For now, just return the booking information
         result = HotelBookingResult(
             hotel_name=params.hotel_name,
             address=params.address,
@@ -404,8 +447,6 @@ async def search_transfers(params: TransferSearchParams) -> TransferSearchResult
         response = requests.request("POST", url, headers=headers, data=payload)
         response_data = response.json()  # Convert response to JSON
 
-        print(f"\n\n\n\n\nTransfer search response: {json.dumps(response_data, indent=2)}\n\n\n\n\n")
-
         if 'errors' in response_data:
             error_detail = response_data['errors'][0].get('detail', '')
             if 'NEED GEOCODES' in error_detail:
@@ -444,7 +485,8 @@ async def search_transfers(params: TransferSearchParams) -> TransferSearchResult
 
     except Exception as e:
         logger.error(f"Error searching transfers: {str(e)}")
-        return TransferSearchResult(error="An unexpected error occurred while searching for transfers")
+        return TransferSearchResult(error="I encountered an issue while trying to search for transfers. This could be due to temporary availability issues. Please try searching for transfers again, and I'll help you complete the booking. Also could be the access token issue, try refreshing it. Sorry for the inconvenience!"
+)
 
 async def book_transfer(params: TransferBookingParams) -> TransferBookingResult:
     """Book a transfer and store it in trip storage."""
