@@ -8,14 +8,13 @@ interface ChatMessageProps {
 const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
   const isUser = message.role === 'user';
   
-  // Function to format the content of the message
-  const formatContent = (content: any) => {
+  const formatContent = (content: any): string => {
     if (typeof content === 'string') {
       return content;
     }
     return JSON.stringify(content, null, 2);
   };
-  
+
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
       <div 
