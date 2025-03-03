@@ -8,6 +8,7 @@ Oh, and thought i'd respond with my own recommendation. The first thing that cam
 
 [![Cool Movie](https://img.youtube.com/vi/awqqTGI4B-c/0.jpg)](https://www.youtube.com/watch?v=awqqTGI4B-c)
 
+Take a look at the write-up (pdf) for details about planning, design, future work, and thoughts.
 
 ## Installation
 
@@ -41,6 +42,8 @@ Navigate to the backend directory and install the dependencies:
 cd backend
 pip install -r requirements.txt
 ```
+
+While here, add your API keys to the .env file.
 
 ### Frontend
 
