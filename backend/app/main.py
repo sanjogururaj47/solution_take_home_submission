@@ -2,11 +2,14 @@
 import json
 import logging
 from datetime import date
+import os
+from pathlib import Path
+from dotenv import dotenv_values
 
 # Third-party imports
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
+import logfire
 
 # Local application imports
 from .models import (
@@ -29,15 +32,15 @@ from .models import (
 )
 from .openai_service import generate_chat_response
 
-# Load environment variables
-load_dotenv()
+# Get the path to the .env file (one directory up from current file)
+env_path = Path(__file__).parent.parent / '.env'
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-)
-logger = logging.getLogger(__name__)
+# Load environment variables into a dictionary
+config = dotenv_values(env_path)
+
+# Configure Logfire
+logfire.configure(token=config['LOGFIRE_TOKEN'])
+
 
 app = FastAPI()
 
@@ -55,7 +58,7 @@ CURRENT_YEAR = date.today().year  # Extract the current year
 
 # Define global system prompt
 SYSTEM_PROMPT = f"""The year is {CURRENT_YEAR}. You are an AI travel agent for Brainbase Airlines. Start by warmly greeting the user and asking how you can help them with their travel plans today.
-You help with 3 services: flights, hotels, and transfers. If the user asks for all 3, handle them one at a time, in this order: flights, hotels, then transfers.
+You help with 3 services: flights, hotels, and transfers. If the user asks for all 3, handle them one at a time, in this order: flights, hotels, then transfers. Make sure you complete the booking of each service before moving on to the next.
 
 IMPORTANT: When a user requests multiple services at once, DO NOT CALL ANY TOOLS immediately. 
 Instead, first respond with an acknowledgment and explain the step-by-step process.
@@ -541,7 +544,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     chat_message = ChatMessage(**message_data)
                     messages.append(chat_message)
                 except Exception as e:
-                    logger.error(f"Error creating ChatMessage: {str(e)}, message data: {msg}")
+                    logfire.error(f"Error creating ChatMessage: {str(e)}, message data: {msg}")
                     raise
             
             # Add system prompt if not already present
@@ -551,7 +554,7 @@ async def websocket_endpoint(websocket: WebSocket):
             # Create the chat request with tools
             chat_request = ChatRequest(
                 messages=messages,
-                model=data_json.get("model", "gpt-4o"),
+                model="gpt-4o",
                 temperature=data_json.get("temperature", 0.7),
                 tools=AVAILABLE_FUNCTIONS
             )
@@ -648,7 +651,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 ))
 
                             except Exception as e:
-                                logger.error(f"Error executing function {function_name}: {str(e)}")
+                                logfire.error(f"Error executing function {function_name}: {str(e)}")
                                 await websocket.send_json({
                                     "type": "chat_response",
                                     "role": "assistant",
@@ -668,7 +671,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 })
 
             except Exception as e:
-                logger.error(f"Error in WebSocket handler: {str(e)}")
+                logfire.error(f"Error in WebSocket handler: {str(e)}")
                 await websocket.send_json({
                     "type": "error",
                     "message": str(e)
@@ -676,7 +679,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-        logger.info("WebSocket disconnected")
+        logfire.info("WebSocket disconnected")
 
 
 if __name__ == "__main__":

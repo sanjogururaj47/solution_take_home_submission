@@ -25,7 +25,7 @@ class Tool(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
-    model: str = "gpt-4o-mini"
+    model: str = "gpt-4o"
     temperature: float = 0.7
     tools: Optional[List[Dict[str, Any]]] = None
     tool_choice: Optional[Union[str, Dict[str, Any]]] = None

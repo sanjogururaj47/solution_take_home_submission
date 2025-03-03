@@ -9,3 +9,4 @@ amadeus==8.1.0
 pydantic-ai==0.0.29
 aiohttp==3.9.3
 requests>=2.32.3
+logfire

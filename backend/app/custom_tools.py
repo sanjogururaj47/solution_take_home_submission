@@ -5,7 +5,6 @@ import json
 import requests
 import aiohttp
 import asyncio
-import logging
 import os
 from .models import (
     FlightSearchResult,
@@ -33,8 +32,17 @@ from .models import (
 )
 from datetime import datetime
 from typing import Dict, List, Union, Optional
+import logfire
+from dotenv import dotenv_values
+from pathlib import Path
 
-logger = logging.getLogger(__name__)
+# Get the path to the .env file (one directory up from current file)
+env_path = Path(__file__).parent.parent / '.env'
+# Load config
+config = dotenv_values(env_path)
+
+# Configure Logfire
+logfire.configure(token=config['LOGFIRE_TOKEN'])
 
 # Move hardcoded values to constants at the top
 AMADEUS_TEST_BASE_URL = "https://test.api.amadeus.com"
@@ -45,7 +53,12 @@ DEFAULT_CURRENCY = "USD"
 # Search and Book Flight
 async def search_flights(origin: str, destination: str, date: str) -> FlightSearchResult:
     """Search for flights using Amadeus API."""
-    access_token = os.getenv('AMADEUS_ACCESS_TOKEN')
+    logfire.info("searching_flights",
+        origin=origin,
+        destination=destination,
+        date=date
+    )
+    access_token = config['AMADEUS_ACCESS_TOKEN']
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(
@@ -123,22 +136,29 @@ async def search_flights(origin: str, destination: str, date: str) -> FlightSear
                         )
                         flights.append(flight)
                     
-                    logger.info(f"Found {len(flights)} flights")
+                    logfire.info("flights_found",
+                        flight_count=len(flights),
+                        origin=origin,
+                        destination=destination
+                    )
                     return FlightSearchResult(flights=flights)
                 except (KeyError, IndexError) as e:
-                    logger.error(f"Error parsing response: {str(e)}")
+                    logfire.error(f"Error parsing response: {str(e)}")
                     return FlightSearchResult(error="Unable to process flight search results. Please try again.")
             
     except Exception as e:
-        logger.error(f"Error searching flights: {str(e)}")
-        return FlightSearchResult(error="I encountered an issue while trying to search for your flight. This could be due to temporary availability issues. Please try searching for flights again, and I'll help you complete the booking. Also could be the access token issue, try refreshing it. Sorry for the inconvenience!"
-)
+        logfire.error("flight_search_error",
+            error=str(e),
+            origin=origin,
+            destination=destination
+        )
+        raise
 
 async def book_flight(params: BookFlightParams) -> BookingResult:
     """
     Book a flight using Amadeus API.
     """
-    access_token = os.getenv('AMADEUS_ACCESS_TOKEN')
+    access_token = config['AMADEUS_ACCESS_TOKEN']
     try:
         async with aiohttp.ClientSession() as session:
             # Step 1: Search for the specific flight
@@ -275,7 +295,7 @@ async def book_flight(params: BookFlightParams) -> BookingResult:
             return result
 
     except Exception as e:
-        logger.error(f"Error booking flight: {str(e)}")
+        logfire.error(f"Error booking flight: {str(e)}")
         return BookingResult(
             status="error",
             error="I encountered an issue while trying to book your flight. This could be due to temporary availability issues. Please try searching for flights again, and I'll help you complete the booking. Also could be the access token issue, try refreshing it. Sorry for the inconvenience!"
@@ -284,7 +304,7 @@ async def book_flight(params: BookFlightParams) -> BookingResult:
 # Search for Hotel
 async def search_hotels(params: SearchHotelParams) -> HotelSearchResult:
     """Search for hotels using Amadeus API."""
-    access_token = os.getenv('AMADEUS_ACCESS_TOKEN')
+    access_token = config['AMADEUS_ACCESS_TOKEN']
     try:
         async with aiohttp.ClientSession() as session:
             # Search for hotels
@@ -387,11 +407,11 @@ async def search_hotels(params: SearchHotelParams) -> HotelSearchResult:
                         }
                     ))
 
-            logger.info(f"Found {len(hotels)} hotels in {params.cityCode}")
+            logfire.info(f"Found {len(hotels)} hotels in {params.cityCode}")
             return HotelSearchResult(hotels=hotels)
 
     except Exception as e:
-        logger.error(f"Error searching hotels: {str(e)}")
+        logfire.error(f"Error searching hotels: {str(e)}")
         return HotelSearchResult(error="I encountered an issue while trying to search for hotels. This could be due to temporary availability issues. Please try searching for hotels again, and I'll help you complete the booking. Also could be the access token issue, try refreshing it. Sorry for the inconvenience!"
 )
 
@@ -411,7 +431,7 @@ async def book_hotel(params: HotelBookingParams) -> HotelBookingResult:
             store_booking("hotel", result)
         return result
     except Exception as e:
-        logger.error(f"Error booking hotel: {str(e)}")
+        logfire.error(f"Error booking hotel: {str(e)}")
         return HotelBookingResult(
             status="error",
             error="Failed to book hotel",
@@ -425,7 +445,7 @@ async def book_hotel(params: HotelBookingParams) -> HotelBookingResult:
 # Search for Transfers
 async def search_transfers(params: TransferSearchParams) -> TransferSearchResult:
     """Search for transfers using Amadeus API."""
-    access_token = os.getenv('AMADEUS_ACCESS_TOKEN')
+    access_token = config['AMADEUS_ACCESS_TOKEN']
     try:
         url = "https://test.api.amadeus.com/v1/shopping/transfer-offers"
 
@@ -484,7 +504,7 @@ async def search_transfers(params: TransferSearchParams) -> TransferSearchResult
         return TransferSearchResult(transfers=transfers)
 
     except Exception as e:
-        logger.error(f"Error searching transfers: {str(e)}")
+        logfire.error(f"Error searching transfers: {str(e)}")
         return TransferSearchResult(error="I encountered an issue while trying to search for transfers. This could be due to temporary availability issues. Please try searching for transfers again, and I'll help you complete the booking. Also could be the access token issue, try refreshing it. Sorry for the inconvenience!"
 )
 
@@ -515,7 +535,7 @@ async def book_transfer(params: TransferBookingParams) -> TransferBookingResult:
         return result
 
     except Exception as e:
-        logger.error(f"Error booking transfer: {str(e)}")
+        logfire.error(f"Error booking transfer: {str(e)}")
         return TransferBookingResult(
             status="error",
             error="An unexpected error occurred while booking the transfer"
@@ -558,5 +578,5 @@ async def get_trip_details(params: GetTripDetailsParams) -> TripDetailsResponse:
             return TripDetailsResponse(trips=[], error=f"Trip {params.trip_id} not found")
         return TripDetailsResponse(trips=list(trip_storage.values()))
     except Exception as e:
-        logger.error(f"Error getting trip details: {str(e)}")
+        logfire.error(f"Error getting trip details: {str(e)}")
         return TripDetailsResponse(trips=[], error="Failed to retrieve trip details")
