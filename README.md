@@ -89,3 +89,10 @@ How can Brainbase interface with live travel data and behave as a real life trav
 - Users details are already stored, and known by the agent - but can be updated and is asked by the LLM to confirm sometimes.
 - Because we are using the Amadeus testAPI sometimes the hotel names and properties are not real (sometimes for flights, too)
 - LogFire is mainly for me, but if you are interested I think I can grant you access to my logfire project so you can see the logs as well.
+
+### Sample Queries
+
+- "Hi, I would like to book a flight"
+- "I would like to look at hotels at my destination"
+- "I would like to explore options to get from the airport to my hotel"
+- "Print my trip itinerary"
