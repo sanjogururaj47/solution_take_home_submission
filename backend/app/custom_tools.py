@@ -155,151 +155,32 @@ async def search_flights(origin: str, destination: str, date: str) -> FlightSear
         raise
 
 async def book_flight(params: BookFlightParams) -> BookingResult:
-    """
-    Book a flight using Amadeus API.
-    """
-    access_token = config['AMADEUS_ACCESS_TOKEN']
+    """Store the flight booking."""
     try:
-        async with aiohttp.ClientSession() as session:
-            # Step 1: Search for the specific flight
-            search_response = await session.get(
-                'https://test.api.amadeus.com/v2/shopping/flight-offers',
-                headers={'Authorization': f'Bearer {access_token}'},
-                params={
-                    'originLocationCode': params.origin,
-                    'destinationLocationCode': params.destination,
-                    'departureDate': params.departure_date,
-                    'adults': 1,
-                    'max': 10  # Increased to make sure we get the specific flight
-                }
-            )
-            search_data = await search_response.json()
+        flight_details = {
+            "flight_number": params.flight_id,
+            "origin": params.origin,
+            "destination": params.destination,
+            "departure_date": params.departure_date
+        }
+
+        result = BookingResult(
+            booking_reference=f"FL-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            status="confirmed",
+            traveler_info=params.traveler
+        )
+
+        if result.status == "confirmed":
+            store_booking("flight", result)
             
-            if 'errors' in search_data:
-                error_detail = search_data['errors'][0].get('detail', '')
-                if "schedule change detected" in error_detail.lower():
-                    return BookingResult(
-                        status="error",
-                        error="This flight's schedule has recently changed or has been booked out. Please search with a later date. I apologize for the inconvenience."
-                    )
-                return BookingResult(
-                    status="error",
-                    error=error_detail or "No flights found matching the criteria"
-                )
-
-            # Find the specific flight offer by ID
-            flight_offer = None
-            for offer in search_data.get('data', []):
-                if offer['id'] == params.flight_id:
-                    flight_offer = offer
-                    break
-
-            if not flight_offer:
-                return BookingResult(
-                    status="error",
-                    error="Could not find the selected flight. Please search again."
-                )
-
-            # Step 2: Price confirmation with the complete flight offer
-            pricing_response = await session.post(
-                'https://test.api.amadeus.com/v1/shopping/flight-offers/pricing',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                    'Content-Type': 'application/json'
-                },
-                json={
-                    'data': {
-                        'type': 'flight-offers-pricing',
-                        'flightOffers': [flight_offer]  # Send the complete offer
-                    }
-                }
-            )
-            pricing_data = await pricing_response.json()
-
-            if 'errors' in pricing_data:
-                return BookingResult(
-                    status="error",
-                    error=pricing_data['errors'][0].get('detail', 'Price confirmation failed')
-                )
-
-            # Step 3: Create booking
-            booking_response = await session.post(
-                'https://test.api.amadeus.com/v1/booking/flight-orders',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                    'Content-Type': 'application/json'
-                },
-                json={
-                    'data': {
-                        'type': 'flight-order',
-                        'flightOffers': [pricing_data['data']['flightOffers'][0]],
-                        'travelers': [{
-                            "id": params.traveler.id,
-                            "dateOfBirth": params.traveler.dateOfBirth,
-                            "name": params.traveler.name,
-                            "gender": params.traveler.gender,
-                            "contact": params.traveler.contact.model_dump(),
-                            "documents": [doc.model_dump() for doc in params.traveler.documents]
-                        }]
-                    }
-                }
-            )
-            booking_data = await booking_response.json()
-
-            # Handle errors in final booking step
-            if 'errors' in booking_data:
-                error_detail = booking_data['errors'][0].get('detail', '')
-                
-                # Handle schedule change error
-                if "schedule change detected" in error_detail.lower():
-                    return BookingResult(
-                        status="error",
-                        error="This flight's schedule has recently changed or has been booked out. Please search with a later date. I apologize for the inconvenience."
-                    )
-                
-                return BookingResult(
-                    status="error",
-                    error=booking_data['errors'][0].get('detail', 'Booking failed')
-                )
-
-            # Extract flight details from the confirmed booking
-            segments = booking_data['data']['flightOffers'][0]["itineraries"][0]["segments"]
-            flight_details = {
-                "segments": [
-                    {
-                        "flight_number": f"{segment['carrierCode']}{segment['number']}",
-                        "departure": segment["departure"]["at"],
-                        "arrival": segment["arrival"]["at"],
-                        "origin": segment["departure"]["iataCode"],
-                        "destination": segment["arrival"]["iataCode"],
-                    }
-                    for segment in segments
-                ],
-                "total_segments": len(segments),
-                "origin": segments[0]["departure"]["iataCode"],  # First departure
-                "destination": segments[-1]["arrival"]["iataCode"],  # Last arrival
-                "departure": segments[0]["departure"]["at"],  # First departure time
-                "arrival": segments[-1]["arrival"]["at"],  # Last arrival time
-            }
-
-            result = BookingResult(
-                booking_reference=booking_data['data'].get('id', 'Unknown'),
-                status="confirmed",
-                price=booking_data['data']['flightOffers'][0]["price"]["total"],
-                flight_details=flight_details,
-                traveler_info=params.traveler
-            )
-
-            if result.status == "confirmed":
-                store_booking("flight", result)
-            return result
+        return result
 
     except Exception as e:
         logfire.error(f"Error booking flight: {str(e)}")
         return BookingResult(
             status="error",
-            error="I encountered an issue while trying to book your flight. This could be due to temporary availability issues. Please try searching for flights again, and I'll help you complete the booking. Also could be the access token issue, try refreshing it. Sorry for the inconvenience!"
-        ) 
+            error="Failed to book flight"
+        )
 
 # Search for Hotel
 async def search_hotels(params: SearchHotelParams) -> HotelSearchResult:

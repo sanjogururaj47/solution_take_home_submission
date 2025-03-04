@@ -81,10 +81,10 @@ This will attach the access token to the .env file. It expires every 30 mins, so
 
 ## Problem Statement
 
-How can Brainbase interface with live travel data and behave as a real life travel agent would?
+How can Brainbase interface with live travel data and behave as a real life travel agent would
 
 ## Assumptions
 
 - The user is booking a flight for themselves.
-- Users details are already stored, and known by the agent - but can be updated and is asked by the LLM sometimes.
+- Users details are already stored, and known by the agent - but can be updated and is asked by the LLM to confirm sometimes.
 - Because we are using the Amadeus testAPI sometimes the hotel names and properties are not real (sometimes for flights, too)

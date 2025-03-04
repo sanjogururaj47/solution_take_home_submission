@@ -582,9 +582,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         if tool_call.type == "function":
                             function_name = tool_call.function.name
                             function_args = json.loads(tool_call.function.arguments)
-                            
-                            print(f"\n\n\n\n\nProcessing function call: {function_name}")
-                            
+
                             try:
                                 if function_name in FUNCTION_MAP:
                                     if function_name == "search_flights":
@@ -619,8 +617,6 @@ async def websocket_endpoint(websocket: WebSocket):
                                 # Convert Pydantic model to dict for JSON serialization
                                 function_response_dict = function_response.model_dump()
 
-                                print(f"\n\n\n\n\nFunction response: {function_response_dict}\n\n\n\n\n")
-                                                                
                                 # Check for errors in the function response
                                 if hasattr(function_response, 'error') and function_response.error:
                                     await websocket.send_json({

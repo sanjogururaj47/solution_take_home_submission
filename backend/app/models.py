@@ -127,11 +127,11 @@ class PaymentInfo(BaseModel):
 # Update the Traveler model to include payment information
 class Traveler(BaseModel):
     id: str = "1"
-    dateOfBirth: str = "2000-01-16"
     name: dict[str, str] = {
         "firstName": "John",
         "lastName": "Smith"
     }
+    dateOfBirth: str = "2000-01-16"
     gender: str = "MALE"
     contact: Contact = Contact(
         emailAddress="john@smith.com",
@@ -149,12 +149,24 @@ class Traveler(BaseModel):
     payment: PaymentInfo = PaymentInfo()  # Add payment information with defaults
 
 # Book Flight Models
+class FlightSegmentParams(BaseModel):
+    departure: Dict[str, str]  
+    arrival: Dict[str, str]      
+    carrierCode: str            
+    number: str                
+    duration: str             
+    id: str                 
+
+class TravelerInfo(BaseModel):
+    name: Dict[str, str]      # {"firstName": "John", "lastName": "Doe"}
+    contact: Dict[str, Any]   # {"emailAddress": "...", "phones": [...]}
+
 class BookFlightParams(BaseModel):
-    flight_id: str  # ID of the selected flight
-    origin: str
-    destination: str
-    departure_date: str
-    traveler: Traveler
+    flight_id: str           # Flight number(s) e.g. "AC 1102-AC 840-AC 9056"
+    origin: str             # Origin airport code
+    destination: str        # Destination airport code
+    departure_date: str     # Departure date
+    traveler: Dict[str, Any]  # Traveler information including name and contact
 
 class FlightDetails(BaseModel):
     segments: List[Dict[str, str]]  # List of segment dictionaries
@@ -169,24 +181,34 @@ class BookingResult(BaseModel):
     status: str
     error: Optional[str] = None
     price: Optional[str] = None
-    flight_details: Optional[FlightDetails] = None
+    flight_details: Optional[Flight] = None
     traveler_info: Optional[Traveler] = None
 
 # Add the BookFlightAgent
 class BookFlightAgent(Agent[BookFlightParams, BookingResult]):
-    """Agent that handles flight booking using the Amadeus API"""
+    """Agent that handles flight booking"""
     
     def __init__(self, **data):
         super().__init__(**data)
         self.name = "book_flight"
-        self.description = "Book a flight for a traveler"
+        self.description = """Book a flight by providing:
+            - flight_id: string (flight number(s), e.g. "AC 1102-AC 840")
+            - origin: string (origin airport IATA code)
+            - destination: string (destination airport IATA code)
+            - departure_date: string (YYYY-MM-DD)
+            - traveler: {
+                name: {firstName: string, lastName: string},
+                contact: {emailAddress: string, phones: [{countryCallingCode: string, number: string}]}
+              }"""
     
     model: str = "gpt-4o-mini"
     temperature: float = 0.7
+
+    print(BookFlightParams)
     
     async def run(self, params: BookFlightParams) -> BookingResult:
         from .custom_tools import book_flight
-        return await book_flight(params) 
+        return await book_flight(params)
 
 # Book Hotel Models
 class SearchHotelParams(BaseModel):
@@ -217,7 +239,6 @@ class HotelBasicInfo(BaseModel):
 class HotelSearchResult(BaseModel):
     hotels: Optional[List[HotelBasicInfo]] = None
     error: Optional[str] = None
-
 
 # Update Hotel Booking Models
 class GuestReference(BaseModel):
