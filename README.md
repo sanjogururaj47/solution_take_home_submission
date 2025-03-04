@@ -69,6 +69,8 @@ To run the server, open a new terminal and navigate to /backend and run:
 python app/amadeus_access_token_refresh.py
 ```
 
+This will attach the access token to the .env file. It expires every 30 mins, so if you encounter an ambiguous error, try running the command again. Then restarting the server.
+
 Remember to activate the virtual environment in the new terminal.
 
 Then run the server and refresh the webpage:
@@ -76,8 +78,6 @@ Then run the server and refresh the webpage:
 ```bash
 uvicorn app.main:app --reload
 ```
-
-This will attach the access token to the .env file. It expires every 30 mins, so if you encounter an ambiguous error, try running the command again. Then restarting the server.
 
 ## Problem Statement
 
