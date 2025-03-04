@@ -83,8 +83,9 @@ This will attach the access token to the .env file. It expires every 30 mins, so
 
 How can Brainbase interface with live travel data and behave as a real life travel agent would
 
-## Assumptions
+## Assumptions and notes
 
 - The user is booking a flight for themselves.
 - Users details are already stored, and known by the agent - but can be updated and is asked by the LLM to confirm sometimes.
 - Because we are using the Amadeus testAPI sometimes the hotel names and properties are not real (sometimes for flights, too)
+- LogFire is mainly for me, but if you are interested I think I can grant you access to my logfire project so you can see the logs as well.
